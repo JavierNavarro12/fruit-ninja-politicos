@@ -1,123 +1,246 @@
 import Phaser from 'phaser';
-
-type SwipePoint = { x: number; y: number; t: number };
+import { GameUI } from '../game/ui/GameUI';
+import { PauseMenu } from '../game/ui/PauseMenu';
+import { DifficultyManager } from '../game/managers/DifficultyManager';
+import { FruitSpawner } from '../game/managers/FruitSpawner';
+import { SliceManager } from '../game/managers/SliceManager';
+import { BackgroundEffect } from '../game/effects/BackgroundEffect';
 
 export class GameScene extends Phaser.Scene {
+  // Game state
   private score: number = 0;
-  private scoreText!: Phaser.GameObjects.Text;
-  private trail!: Phaser.GameObjects.Graphics;
-  private swipePoints: SwipePoint[] = [];
+  private lives: number = 3;
+  private isPaused: boolean = false;
+
+  // Módulos
+  private gameUI!: GameUI;
+  private pauseMenu!: PauseMenu;
+  private difficultyManager!: DifficultyManager;
+  private fruitSpawner!: FruitSpawner;
+  private sliceManager!: SliceManager;
 
   constructor() {
     super('game');
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#10131a');
+    // Crear fondo
+    BackgroundEffect.createWoodenBackground(this);
 
-    this.scoreText = this.add.text(24, 24, 'Puntos: 0', {
-      fontFamily: 'sans-serif',
-      fontSize: '36px',
-      color: '#ffffff'
-    }).setDepth(10);
+    // Inicializar módulos
+    this.initializeModules();
 
-    this.trail = this.add.graphics({ lineStyle: { width: 6, color: 0x66e0ff, alpha: 0.9 } }).setDepth(9);
-
-    this.time.addEvent({ delay: 700, loop: true, callback: this.spawnTarget, callbackScope: this });
-
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.recordSwipe(p));
+    // Iniciar juego
+    this.startGame();
   }
 
-  private spawnTarget(): void {
-    const x = Phaser.Math.Between(100, this.scale.width - 100);
-    const y = this.scale.height + 50;
+  private initializeModules(): void {
+    // UI
+    this.gameUI = new GameUI(this);
+    this.gameUI.create(() => this.togglePause());
 
-    const sprite = this.physics.add.image(x, y, 'politician').setScale(1).setCircle(60);
+    // Menú de pausa
+    this.pauseMenu = new PauseMenu(this);
 
-    const vx = Phaser.Math.Between(-200, 200);
-    const vy = Phaser.Math.Between(-1200, -1500);
-    sprite.setVelocity(vx, vy);
-    sprite.setAngularVelocity(Phaser.Math.Between(-200, 200));
+    // Sistema de dificultad
+    this.difficultyManager = new DifficultyManager(this);
 
-    sprite.setDataEnabled();
-    sprite.setData('slicable', true);
+    // Spawner de frutas
+    this.fruitSpawner = new FruitSpawner(this);
+
+    // Manager de cortes
+    this.sliceManager = new SliceManager(this);
+    this.sliceManager.setup();
   }
 
-  update(time: number, delta: number): void {
-    const now = performance.now();
-    this.swipePoints = this.swipePoints.filter(p => now - p.t < 120);
+  private startGame(): void {
+    // Iniciar spawner
+    this.fruitSpawner.start(this.difficultyManager.getSpawnDelay());
 
-    this.trail.clear();
-    if (this.swipePoints.length > 1) {
-      this.trail.beginPath();
-      this.trail.moveTo(this.swipePoints[0].x, this.swipePoints[0].y);
-      for (let i = 1; i < this.swipePoints.length; i++) {
-        this.trail.lineTo(this.swipePoints[i].x, this.swipePoints[i].y);
-      }
-      this.trail.strokePath();
-    }
+    // Iniciar sistema de dificultad
+    this.difficultyManager.start(() => {
+      // Callback cuando aumenta la dificultad
+      this.fruitSpawner.updateDelay(this.difficultyManager.getSpawnDelay());
+      this.gameUI.pulsePauseButton();
+    });
+  }
 
+  update(): void {
+    if (this.isPaused) return;
+
+    // Actualizar slice manager
+    this.sliceManager.update();
+
+    // Detectar colisiones
     const bodies = this.physics.world.bodies.entries as Phaser.Physics.Arcade.Body[];
-    if (this.swipePoints.length > 1) {
-      for (const body of bodies) {
-        const go = body.gameObject as Phaser.GameObjects.Image;
-        if (!go || !go.active || !(go as any).data?.get('slicable')) continue;
+    this.sliceManager.checkCollisions(bodies, (target) => this.onFruitSliced(target));
 
-        const radius = 60;
-        for (let i = 0; i < this.swipePoints.length - 1; i++) {
-          const a = this.swipePoints[i];
-          const b = this.swipePoints[i + 1];
-          if (this.segmentIntersectsCircle(a.x, a.y, b.x, b.y, go.x, go.y, radius)) {
-            this.slice(go);
-            break;
-          }
-        }
-      }
-    }
+    // Detectar frutas perdidas
+    this.checkMissedFruits(bodies);
   }
 
-  private recordSwipe(p: Phaser.Input.Pointer): void {
-    if (!p.isDown) return;
-    this.swipePoints.push({ x: p.x, y: p.y, t: performance.now() });
-  }
-
-  private slice(target: Phaser.GameObjects.Image): void {
-    (target as any).data.set('slicable', false);
-    target.disableInteractive();
+  private onFruitSliced(target: any): void {
+    target.data.set('slicable', false);
     target.setVisible(false);
 
-    const particles = this.add.particles(target.x, target.y, undefined as any, {
-      lifespan: 400,
-      speed: { min: 200, max: 400 },
-      angle: { min: 0, max: 360 },
-      scale: { start: 0.6, end: 0 },
-      tint: 0xff4757,
-      quantity: 16
-    });
-    this.time.delayedCall(450, () => particles.destroy());
+    // Efectos visuales
+    this.sliceManager.createSliceEffect(target.x, target.y);
 
+    // Incrementar score
     this.score += 1;
-    this.scoreText.setText(`Puntos: ${this.score}`);
+    this.gameUI.updateScore(this.score);
+
+    // Destruir
+    target.destroy();
   }
 
-  private segmentIntersectsCircle(x1: number, y1: number, x2: number, y2: number, cx: number, cy: number, r: number): boolean {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const fx = x1 - cx;
-    const fy = y1 - cy;
+  private checkMissedFruits(bodies: Phaser.Physics.Arcade.Body[]): void {
+    for (const body of bodies) {
+      const go = body.gameObject as any;
+      if (!go || !go.active || !go.data?.get('slicable')) continue;
 
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = fx * fx + fy * fy - r * r;
+      // Salió por los laterales - sin penalización
+      if ((go.x < -100 || go.x > this.scale.width + 100) && !go.data.get('missed')) {
+        go.data.set('missed', true);
+        go.destroy();
+        continue;
+      }
 
-    let discriminant = b * b - 4 * a * c;
-    if (discriminant < 0) return false;
+      // Cayó por debajo - perder vida si estaba visible
+      if (go.y > this.scale.height + 50 && !go.data.get('missed')) {
+        if (go.x >= -50 && go.x <= this.scale.width + 50) {
+          go.data.set('missed', true);
+          this.loseLife();
+        }
+        go.destroy();
+      }
+    }
+  }
 
-    discriminant = Math.sqrt(discriminant);
-    const t1 = (-b - discriminant) / (2 * a);
-    const t2 = (-b + discriminant) / (2 * a);
+  private loseLife(): void {
+    if (this.lives <= 0) return;
 
-    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+    this.lives -= 1;
+    this.gameUI.loseLife(this.lives);
+
+    if (this.lives <= 0) {
+      this.gameOver();
+    }
+  }
+
+  private togglePause(): void {
+    this.isPaused = !this.isPaused;
+
+    if (this.isPaused) {
+      this.physics.pause();
+      this.fruitSpawner.pause();
+      this.difficultyManager.pause();
+      
+      this.pauseMenu.show(
+        () => this.togglePause(),
+        () => this.restartGame(),
+        () => this.scene.start('menu')
+      );
+    } else {
+      this.physics.resume();
+      this.fruitSpawner.resume();
+      this.difficultyManager.resume();
+      this.pauseMenu.hide();
+    }
+  }
+
+  private restartGame(): void {
+    // Reiniciar estado
+    this.score = 0;
+    this.lives = 3;
+    this.isPaused = false;
+
+    // Limpiar frutas activas
+    this.physics.world.bodies.entries.forEach((body: any) => {
+      const go = body.gameObject;
+      if (go && go.active) {
+        go.destroy();
+      }
+    });
+
+    // Reiniciar UI
+    this.gameUI.updateScore(0);
+    this.gameUI.resetLives();
+
+    // Reiniciar managers
+    this.difficultyManager.reset();
+    this.fruitSpawner.destroy();
+    this.fruitSpawner.start(this.difficultyManager.getSpawnDelay());
+
+    // Reanudar
+    this.physics.resume();
+    this.pauseMenu.hide();
+  }
+
+  private gameOver(): void {
+    this.isPaused = true;
+    this.physics.pause();
+    this.fruitSpawner.pause();
+    this.difficultyManager.pause();
+
+    const { width, height } = this.scale;
+
+    // Overlay
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.8);
+    overlay.fillRect(0, 0, width, height);
+    overlay.setDepth(200);
+
+    // Texto Game Over
+    const gameOverText = this.add.text(width / 2, height / 2 - 80, 'GAME OVER', {
+      fontFamily: 'Arial Black, sans-serif',
+      fontSize: '72px',
+      color: '#FF0000',
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(201);
+    gameOverText.setStroke('#8B0000', 6);
+    gameOverText.setShadow(5, 5, '#000000', 10);
+
+    // Puntuación final
+    const finalScore = this.add.text(width / 2, height / 2, `Puntuación: ${this.score}`, {
+      fontFamily: 'Arial Black, sans-serif',
+      fontSize: '36px',
+      color: '#FFD93D',
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(201);
+    finalScore.setStroke('#8B4513', 4);
+
+    // Botón de reiniciar
+    const restartBtn = this.add.text(width / 2, height / 2 + 80, '↻ REINTENTAR', {
+      fontFamily: 'Arial Black, sans-serif',
+      fontSize: '32px',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+      backgroundColor: '#27AE60',
+      padding: { x: 30, y: 15 }
+    }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+
+    restartBtn.on('pointerdown', () => {
+      overlay.destroy();
+      gameOverText.destroy();
+      finalScore.destroy();
+      restartBtn.destroy();
+      menuBtn.destroy();
+      this.restartGame();
+    });
+
+    // Botón de menú
+    const menuBtn = this.add.text(width / 2, height / 2 + 150, '↩ MENÚ', {
+      fontFamily: 'Arial Black, sans-serif',
+      fontSize: '28px',
+      color: '#FFFFFF',
+      fontStyle: 'bold',
+      backgroundColor: '#E74C3C',
+      padding: { x: 30, y: 12 }
+    }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+
+    menuBtn.on('pointerdown', () => {
+      this.scene.start('menu');
+    });
   }
 }
-
