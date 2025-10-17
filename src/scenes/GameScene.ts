@@ -4,6 +4,7 @@ import { PauseMenu } from '../game/ui/PauseMenu';
 import { DifficultyManager } from '../game/managers/DifficultyManager';
 import { FruitSpawner } from '../game/managers/FruitSpawner';
 import { SliceManager } from '../game/managers/SliceManager';
+import { BombManager } from '../game/managers/BombManager';
 import { BackgroundEffect } from '../game/effects/BackgroundEffect';
 
 export class GameScene extends Phaser.Scene {
@@ -18,6 +19,7 @@ export class GameScene extends Phaser.Scene {
   private difficultyManager!: DifficultyManager;
   private fruitSpawner!: FruitSpawner;
   private sliceManager!: SliceManager;
+  private bombManager!: BombManager;
 
   constructor() {
     super('game');
@@ -51,6 +53,9 @@ export class GameScene extends Phaser.Scene {
     // Manager de cortes
     this.sliceManager = new SliceManager(this);
     this.sliceManager.setup();
+
+    // Manager de bombas
+    this.bombManager = new BombManager(this);
   }
 
   private startGame(): void {
@@ -60,7 +65,11 @@ export class GameScene extends Phaser.Scene {
     // Iniciar sistema de dificultad
     this.difficultyManager.start(() => {
       // Callback cuando aumenta la dificultad
-      this.fruitSpawner.updateDelay(this.difficultyManager.getSpawnDelay());
+      this.fruitSpawner.updateDelay(
+        this.difficultyManager.getSpawnDelay(),
+        this.difficultyManager.getMinSpeed(),
+        this.difficultyManager.getMaxSpeed()
+      );
       this.gameUI.pulsePauseButton();
     });
   }
@@ -75,23 +84,39 @@ export class GameScene extends Phaser.Scene {
     const bodies = this.physics.world.bodies.entries as Phaser.Physics.Arcade.Body[];
     this.sliceManager.checkCollisions(bodies, (target) => this.onFruitSliced(target));
 
+    // Actualizar posicion de elementos visuales de bombas
+    this.bombManager.updateVisuals(bodies);
+
     // Detectar frutas perdidas
     this.checkMissedFruits(bodies);
   }
 
   private onFruitSliced(target: any): void {
     target.data.set('slicable', false);
-    target.setVisible(false);
+    const isBomb = target.data.get('isBomb');
 
-    // Efectos visuales
-    this.sliceManager.createSliceEffect(target.x, target.y);
+    if (isBomb) {
+      // BOMBA CORTADA - Explosion y Game Over
+      this.bombManager.createExplosion(target.x, target.y);
+      this.bombManager.destroyWithVisuals(target);
+      
+      // Game Over inmediato
+      this.lives = 0;
+      this.gameOver();
+    } else {
+      // Fruta normal - comportamiento habitual
+      target.setVisible(false);
 
-    // Incrementar score
-    this.score += 1;
-    this.gameUI.updateScore(this.score);
+      // Efectos visuales
+      this.sliceManager.createSliceEffect(target.x, target.y);
 
-    // Destruir
-    target.destroy();
+      // Incrementar score
+      this.score += 1;
+      this.gameUI.updateScore(this.score);
+
+      // Destruir
+      target.destroy();
+    }
   }
 
   private checkMissedFruits(bodies: Phaser.Physics.Arcade.Body[]): void {
@@ -99,20 +124,25 @@ export class GameScene extends Phaser.Scene {
       const go = body.gameObject as any;
       if (!go || !go.active || !go.data?.get('slicable')) continue;
 
+      const isBomb = go.data.get('isBomb');
+
       // Salió por los laterales - sin penalización
       if ((go.x < -100 || go.x > this.scale.width + 100) && !go.data.get('missed')) {
         go.data.set('missed', true);
-        go.destroy();
+        this.bombManager.destroyWithVisuals(go);
         continue;
       }
 
-      // Cayó por debajo - perder vida si estaba visible
+      // Cayó por debajo - perder vida si estaba visible (pero no si es bomba)
       if (go.y > this.scale.height + 50 && !go.data.get('missed')) {
         if (go.x >= -50 && go.x <= this.scale.width + 50) {
           go.data.set('missed', true);
-          this.loseLife();
+          // Solo perder vida si NO es una bomba (las bombas que caen no hacen daño)
+          if (!isBomb) {
+            this.loseLife();
+          }
         }
-        go.destroy();
+        this.bombManager.destroyWithVisuals(go);
       }
     }
   }
@@ -155,11 +185,11 @@ export class GameScene extends Phaser.Scene {
     this.lives = 3;
     this.isPaused = false;
 
-    // Limpiar frutas activas
+    // Limpiar frutas activas y sus elementos visuales
     this.physics.world.bodies.entries.forEach((body: any) => {
       const go = body.gameObject;
       if (go && go.active) {
-        go.destroy();
+        this.bombManager.destroyWithVisuals(go);
       }
     });
 
@@ -167,12 +197,26 @@ export class GameScene extends Phaser.Scene {
     this.gameUI.updateScore(0);
     this.gameUI.resetLives();
 
-    // Reiniciar managers
-    this.difficultyManager.reset();
+    // Detener managers
     this.fruitSpawner.destroy();
+    this.difficultyManager.destroy();
+    
+    // Resetear valores iniciales
+    this.difficultyManager.reset();
+    
+    // Reiniciar juego (igual que startGame)
     this.fruitSpawner.start(this.difficultyManager.getSpawnDelay());
+    
+    this.difficultyManager.start(() => {
+      this.fruitSpawner.updateDelay(
+        this.difficultyManager.getSpawnDelay(),
+        this.difficultyManager.getMinSpeed(),
+        this.difficultyManager.getMaxSpeed()
+      );
+      this.gameUI.pulsePauseButton();
+    });
 
-    // Reanudar
+    // Reanudar fisica
     this.physics.resume();
     this.pauseMenu.hide();
   }

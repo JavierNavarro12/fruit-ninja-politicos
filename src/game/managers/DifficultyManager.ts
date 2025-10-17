@@ -62,9 +62,8 @@ export class DifficultyManager {
 
     if (this.timer) {
       this.timer.destroy();
+      this.timer = undefined;
     }
-
-    this.start(this.onDifficultyIncrease);
   }
 
   destroy(): void {
@@ -76,6 +75,14 @@ export class DifficultyManager {
 
   getSpawnDelay(): number {
     return this.currentSpawnDelay;
+  }
+
+  getMinSpeed(): number {
+    return this.currentMinSpeed;
+  }
+
+  getMaxSpeed(): number {
+    return this.currentMaxSpeed;
   }
 
   getSpeedRange(): { min: number; max: number } {

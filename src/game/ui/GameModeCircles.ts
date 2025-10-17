@@ -94,18 +94,33 @@ export class GameModeCircles {
     special: boolean | undefined,
     onClick: () => void
   ): void {
-    const hitArea = new Phaser.Geom.Circle(0, 0, 70);
+    // Area interactiva mas grande, especialmente para movil
+    const isMobile = this.scene.sys.game.device.os.android || this.scene.sys.game.device.os.iOS;
+    const hitRadius = isMobile ? 100 : 85;
+    const hitArea = new Phaser.Geom.Circle(0, 0, hitRadius);
     mainCircle.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
 
+    // Flags para evitar multiples triggers
+    let isHovering = false;
+    let hoverTween: Phaser.Tweens.Tween | null = null;
+    let ringTween: Phaser.Tweens.Tween | null = null;
+
     mainCircle.on('pointerover', () => {
-      this.scene.tweens.add({
+      if (isHovering) return;
+      isHovering = true;
+
+      // Limpiar tweens previos
+      if (hoverTween) hoverTween.stop();
+      if (ringTween) ringTween.stop();
+
+      hoverTween = this.scene.tweens.add({
         targets: container,
         scale: 1.15,
         duration: 200,
         ease: 'Back.easeOut'
       });
 
-      this.scene.tweens.add({
+      ringTween = this.scene.tweens.add({
         targets: ring,
         alpha: 0.5,
         duration: 300,
@@ -115,9 +130,16 @@ export class GameModeCircles {
     });
 
     mainCircle.on('pointerout', () => {
+      if (!isHovering) return;
+      isHovering = false;
+
+      // Limpiar tweens previos
+      if (hoverTween) hoverTween.stop();
+      if (ringTween) ringTween.stop();
       this.scene.tweens.killTweensOf(container);
       this.scene.tweens.killTweensOf(ring);
-      this.scene.tweens.add({
+
+      hoverTween = this.scene.tweens.add({
         targets: container,
         scale: 1,
         duration: 200,
@@ -127,6 +149,8 @@ export class GameModeCircles {
     });
 
     mainCircle.on('pointerdown', () => {
+      // Feedback inmediato
+      this.scene.tweens.killTweensOf(container);
       this.scene.tweens.add({
         targets: container,
         scale: 0.9,
@@ -135,6 +159,19 @@ export class GameModeCircles {
         onComplete: onClick
       });
     });
+
+    // En movil, tambien responder a tap
+    if (isMobile) {
+      mainCircle.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        // Solo si el pointer no se movio mucho (es un tap, no un drag)
+        if (Phaser.Math.Distance.Between(
+          pointer.downX, pointer.downY,
+          pointer.upX, pointer.upY
+        ) < 10) {
+          onClick();
+        }
+      });
+    }
   }
 
   private setupAnimations(
