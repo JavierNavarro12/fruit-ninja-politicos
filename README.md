@@ -1,40 +1,45 @@
-# Fruit Ninja Políticos
+# Fruit Ninja Políticos (Phaser 3 + TypeScript + Vite)
 
-Un juego estilo Fruit Ninja con temática política.
+Juego tipo Fruit Ninja en 2D para la web, con políticos en lugar de frutas. Stack: Phaser 3, TypeScript y Vite.
 
-## Descripción
+## Requisitos
+- Node.js LTS (18 o 20). En Windows, descarga e instala desde: https://nodejs.org/en/download
+  - Tras instalar, abre una nueva ventana de PowerShell y verifica:
+  ```powershell
+  node -v
+  npm -v
+  ```
 
-Este proyecto es un juego inspirado en Fruit Ninja donde los jugadores pueden interactuar con elementos políticos de forma divertida.
-
-## Instalación
-
+## Comandos
 ```bash
-# Clona el repositorio
-git clone <url-del-repositorio>
-
-# Navega al directorio
-cd fruit-ninja-politicos
-
-# Instala las dependencias (si las hay)
-npm install
+npm install        # instala dependencias
+npm run dev        # servidor de desarrollo (abre http://localhost:5173)
+npm run build      # build de producción en dist/
+npm run preview    # previsualiza el build
 ```
 
-## Uso
+## Estructura
+```
+.
+├── index.html
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── src/
+│   ├── main.ts
+│   └── scenes/
+│       ├── BootScene.ts
+│       └── GameScene.ts
+└── .gitignore
+```
 
-Por definir...
+## Roadmap breve
+- Reemplazar el placeholder "politician" por sprites reales (caras, cuerpos, etc.)
+- Efecto de corte con mitades + partículas de "jugo" temático
+- Sonidos (Howler) y vibración móvil
+- Leaderboard (Supabase/Firebase)
+- PWA para instalación en móvil
 
-## Tecnologías
-
-- HTML5
-- CSS3
-- JavaScript
-- Canvas API
-
-## Contribuir
-
-Las contribuciones son bienvenidas. Por favor, abre un issue primero para discutir los cambios que te gustaría hacer.
-
-## Licencia
-
-MIT
+## Notas
+- El corte actual usa una aproximación simple (trayectoria vs. círculos). Es suficiente para un prototipo; luego se puede mejorar a máscaras y slicing visual.
 
