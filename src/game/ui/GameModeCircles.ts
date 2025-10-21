@@ -18,15 +18,15 @@ export class GameModeCircles {
 
   create(onModeSelected: (mode: string) => void): void {
     const { width, height } = this.scene.scale;
-    const centerY = height * 0.5;
+    const centerY = height * 0.56;
     
     // Posiciones más separadas para evitar solapamiento
     const positions: ModeConfig[] = [
-      { x: width * 0.32, y: centerY - 60, color: 0x4CAF50, label: 'CLÁSICO', fruit: '🍉' },
-      { x: width * 0.5, y: centerY - 100, color: 0xFFA500, label: 'PRÓXIMO EVENTO', fruit: '🔥', special: true },
-      { x: width * 0.68, y: centerY - 60, color: 0xFFEB3B, label: 'MULTIJUGADOR', fruit: '🍋' },
-      { x: width * 0.37, y: centerY + 160, color: 0xF44336, label: 'ZEN', fruit: '🍎' },
-      { x: width * 0.63, y: centerY + 160, color: 0xFFD700, label: 'ARCADE', fruit: '🍌' }
+      { x: width * 0.32, y: centerY - 40, color: 0x4CAF50, label: 'CLÁSICO', fruit: '🍉' },
+      { x: width * 0.5, y: centerY - 80, color: 0xFFA500, label: 'PRÓXIMO EVENTO', fruit: '🔥', special: true },
+      { x: width * 0.68, y: centerY - 40, color: 0xFFEB3B, label: 'MULTIJUGADOR', fruit: '🍋' },
+      { x: width * 0.37, y: centerY + 175, color: 0xF44336, label: 'ZEN', fruit: '🍎' },
+      { x: width * 0.63, y: centerY + 175, color: 0xFFD700, label: 'ARCADE', fruit: '🍌' }
     ];
 
     positions.forEach((pos, index) => {
@@ -42,12 +42,6 @@ export class GameModeCircles {
 
     const ringRadius = config.special ? 100 : 85;
     
-    // Anillo exterior
-    const ring = this.scene.add.graphics();
-    ring.lineStyle(config.special ? 12 : 8, config.color, 1);
-    ring.strokeCircle(0, 0, ringRadius);
-    container.add(ring);
-
     // Anillo interior giratorio
     const innerRing = this.scene.add.graphics();
     innerRing.lineStyle(4, 0xFFFFFF, 0.6);
@@ -81,89 +75,37 @@ export class GameModeCircles {
     container.add(labelText);
 
     // Interactividad
-    this.setupInteractions(mainCircle, container, ring, config.special, () => onModeSelected(config.label));
+    this.setupInteractions(container, ringRadius, () => onModeSelected(config.label));
 
     // Animaciones
     this.setupAnimations(container, innerRing, mainCircle, config.special);
   }
 
   private setupInteractions(
-    mainCircle: Phaser.GameObjects.Arc,
     container: Phaser.GameObjects.Container,
-    ring: Phaser.GameObjects.Graphics,
-    special: boolean | undefined,
+    ringRadius: number,
     onClick: () => void
   ): void {
-    // Area interactiva mas grande, especialmente para movil
+    // Crear una zona interactiva que cubra todo el botón (anillos + etiqueta)
+    const labelApproxHeight = 36;
+    const padding = 20;
+    const hitWidth = (ringRadius + 15 + padding) * 2;
+    const hitHeight = (ringRadius + 15) + (ringRadius + 25 + labelApproxHeight) + padding;
+    const centerYOffset = (labelApproxHeight + 10) / 2; // desplazar al centro del rectángulo total
+
+    const hitZone = this.scene.add.zone(0, centerYOffset, hitWidth, hitHeight);
+    hitZone.setInteractive({ cursor: 'pointer' });
+    container.addAt(hitZone, 0);
+
+    // Click inmediato
+    hitZone.on('pointerdown', () => {
+      onClick();
+    });
+
+    // En móvil, responder a tap con umbral pequeño
     const isMobile = this.scene.sys.game.device.os.android || this.scene.sys.game.device.os.iOS;
-    const hitRadius = isMobile ? 100 : 85;
-    const hitArea = new Phaser.Geom.Circle(0, 0, hitRadius);
-    mainCircle.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
-
-    // Flags para evitar multiples triggers
-    let isHovering = false;
-    let hoverTween: Phaser.Tweens.Tween | null = null;
-    let ringTween: Phaser.Tweens.Tween | null = null;
-
-    mainCircle.on('pointerover', () => {
-      if (isHovering) return;
-      isHovering = true;
-
-      // Limpiar tweens previos
-      if (hoverTween) hoverTween.stop();
-      if (ringTween) ringTween.stop();
-
-      hoverTween = this.scene.tweens.add({
-        targets: container,
-        scale: 1.15,
-        duration: 200,
-        ease: 'Back.easeOut'
-      });
-
-      ringTween = this.scene.tweens.add({
-        targets: ring,
-        alpha: 0.5,
-        duration: 300,
-        yoyo: true,
-        repeat: -1
-      });
-    });
-
-    mainCircle.on('pointerout', () => {
-      if (!isHovering) return;
-      isHovering = false;
-
-      // Limpiar tweens previos
-      if (hoverTween) hoverTween.stop();
-      if (ringTween) ringTween.stop();
-      this.scene.tweens.killTweensOf(container);
-      this.scene.tweens.killTweensOf(ring);
-
-      hoverTween = this.scene.tweens.add({
-        targets: container,
-        scale: 1,
-        duration: 200,
-        ease: 'Back.easeIn'
-      });
-      ring.setAlpha(1);
-    });
-
-    mainCircle.on('pointerdown', () => {
-      // Feedback inmediato
-      this.scene.tweens.killTweensOf(container);
-      this.scene.tweens.add({
-        targets: container,
-        scale: 0.9,
-        duration: 100,
-        yoyo: true,
-        onComplete: onClick
-      });
-    });
-
-    // En movil, tambien responder a tap
     if (isMobile) {
-      mainCircle.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-        // Solo si el pointer no se movio mucho (es un tap, no un drag)
+      hitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
         if (Phaser.Math.Distance.Between(
           pointer.downX, pointer.downY,
           pointer.upX, pointer.upY

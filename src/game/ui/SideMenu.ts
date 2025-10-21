@@ -10,9 +10,11 @@ interface ButtonConfig {
 
 export class SideMenu {
   private scene: Phaser.Scene;
+  private onArsenal?: () => void;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, onArsenal?: () => void) {
     this.scene = scene;
+    this.onArsenal = onArsenal;
   }
 
   create(): void {
@@ -30,7 +32,8 @@ export class SideMenu {
     ];
 
     buttons.forEach((btn, index) => {
-      this.createSideButton(menuX, startY + (index * spacing), btn);
+      const onClick = btn.label === 'ARSENAL' ? this.onArsenal : undefined;
+      this.createSideButton(menuX, startY + (index * spacing), btn, onClick);
     });
 
     this.createSideButton(menuX, height - 100, {
@@ -40,7 +43,7 @@ export class SideMenu {
     });
   }
 
-  private createSideButton(x: number, y: number, config: ButtonConfig): void {
+  private createSideButton(x: number, y: number, config: ButtonConfig, onClick?: () => void): Phaser.GameObjects.Container {
     const container = this.scene.add.container(x, y);
 
     // Fondo
@@ -91,10 +94,11 @@ export class SideMenu {
     }
 
     // Interactividad
-    this.setupInteractions(bg, container, x, y);
+    this.setupInteractions(bg, container, x, y, onClick);
 
     // Animación de entrada
     this.animateEntry(container, x);
+    return container;
   }
 
   private createBadge(container: Phaser.GameObjects.Container, badge: string): void {
@@ -113,12 +117,14 @@ export class SideMenu {
     bg: Phaser.GameObjects.Graphics,
     container: Phaser.GameObjects.Container,
     x: number,
-    y: number
+    y: number,
+    onClick?: () => void
   ): void {
     const hitArea = new Phaser.Geom.Rectangle(-90, -30, 180, 60);
     bg.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
 
     bg.on('pointerover', () => {
+      this.scene.input.setDefaultCursor('pointer');
       this.scene.tweens.add({
         targets: container,
         x: x + 10,
@@ -129,6 +135,7 @@ export class SideMenu {
     });
 
     bg.on('pointerout', () => {
+      this.scene.input.setDefaultCursor('default');
       this.scene.tweens.add({
         targets: container,
         x: x,
@@ -142,7 +149,10 @@ export class SideMenu {
         targets: container,
         scale: 0.95,
         duration: 100,
-        yoyo: true
+        yoyo: true,
+        onComplete: () => {
+          if (onClick) onClick();
+        }
       });
     });
   }

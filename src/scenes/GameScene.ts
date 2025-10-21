@@ -6,6 +6,7 @@ import { FruitSpawner } from '../game/managers/FruitSpawner';
 import { SliceManager } from '../game/managers/SliceManager';
 import { BombManager } from '../game/managers/BombManager';
 import { BackgroundEffect } from '../game/effects/BackgroundEffect';
+import { progressManager } from '../game/managers/ProgressManager';
 
 export class GameScene extends Phaser.Scene {
   // Game state
@@ -114,6 +115,11 @@ export class GameScene extends Phaser.Scene {
       this.score += 1;
       this.gameUI.updateScore(this.score);
 
+      // Otorgar experiencia por corte y actualizar barras
+      progressManager.addExperience(10);
+      this.events.emit('update-xp-bar');
+      this.events.emit('update-xp-hud');
+
       // Destruir
       target.destroy();
     }
@@ -204,6 +210,10 @@ export class GameScene extends Phaser.Scene {
     // Resetear valores iniciales
     this.difficultyManager.reset();
     
+    // Limpiar listeners/canales de slice anteriores
+    this.sliceManager.teardown();
+    this.sliceManager.setup();
+
     // Reiniciar juego (igual que startGame)
     this.fruitSpawner.start(this.difficultyManager.getSpawnDelay());
     
@@ -229,11 +239,15 @@ export class GameScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
 
+    // Contenedor para TODO el UI de Game Over (para poder limpiarlo fácil)
+    const ui = this.add.container(0, 0);
+    ui.setDepth(200);
+
     // Overlay
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.8);
     overlay.fillRect(0, 0, width, height);
-    overlay.setDepth(200);
+    ui.add(overlay);
 
     // Texto Game Over
     const gameOverText = this.add.text(width / 2, height / 2 - 80, 'GAME OVER', {
@@ -241,9 +255,10 @@ export class GameScene extends Phaser.Scene {
       fontSize: '72px',
       color: '#FF0000',
       fontStyle: 'bold'
-    }).setOrigin(0.5).setDepth(201);
+    }).setOrigin(0.5);
     gameOverText.setStroke('#8B0000', 6);
     gameOverText.setShadow(5, 5, '#000000', 10);
+    ui.add(gameOverText);
 
     // Puntuación final
     const finalScore = this.add.text(width / 2, height / 2, `Puntuación: ${this.score}`, {
@@ -251,8 +266,9 @@ export class GameScene extends Phaser.Scene {
       fontSize: '36px',
       color: '#FFD93D',
       fontStyle: 'bold'
-    }).setOrigin(0.5).setDepth(201);
+    }).setOrigin(0.5);
     finalScore.setStroke('#8B4513', 4);
+    ui.add(finalScore);
 
     // Botón de reiniciar
     const restartBtn = this.add.text(width / 2, height / 2 + 80, '↻ REINTENTAR', {
@@ -262,14 +278,11 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
       backgroundColor: '#27AE60',
       padding: { x: 30, y: 15 }
-    }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    ui.add(restartBtn);
 
     restartBtn.on('pointerdown', () => {
-      overlay.destroy();
-      gameOverText.destroy();
-      finalScore.destroy();
-      restartBtn.destroy();
-      menuBtn.destroy();
+      ui.destroy();
       this.restartGame();
     });
 
@@ -281,10 +294,55 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold',
       backgroundColor: '#E74C3C',
       padding: { x: 30, y: 12 }
-    }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    ui.add(menuBtn);
 
     menuBtn.on('pointerdown', () => {
       this.scene.start('menu');
     });
+
+    // Mostrar desbloqueos si subiste de nivel durante la partida
+    const unlocks = progressManager.consumePendingUnlocks();
+    if (unlocks.length > 0) {
+      const panel = this.add.graphics();
+      const panelWidth = Math.min(500, width * 0.8);
+      const panelHeight = 160 + unlocks.length * 40;
+      panel.fillStyle(0x2c2c2c, 0.95);
+      panel.fillRoundedRect(width / 2 - panelWidth / 2, height / 2 - panelHeight - 220, panelWidth, panelHeight, 12);
+      panel.lineStyle(3, 0x4a4a4a, 1);
+      panel.strokeRoundedRect(width / 2 - panelWidth / 2, height / 2 - panelHeight - 220, panelWidth, panelHeight, 12);
+      ui.add(panel);
+
+      const title = this.add.text(width / 2, height / 2 - panelHeight - 200, '¡NUEVOS DESBLOQUEOS!', {
+        fontFamily: 'Arial Black, sans-serif',
+        fontSize: '28px',
+        color: '#FFD93D',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      ui.add(title);
+
+      unlocks.forEach((u, i) => {
+        const text = this.add.text(width / 2, height / 2 - panelHeight - 160 + i * 40, `• ${u.label}`, {
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '18px',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        ui.add(text);
+      });
+
+      const arsenalBtn = this.add.text(width / 2, height / 2 - panelHeight - 80, 'VER ARSENAL', {
+        fontFamily: 'Arial Black, sans-serif',
+        fontSize: '20px',
+        color: '#FFFFFF',
+        fontStyle: 'bold',
+        backgroundColor: '#27AE60',
+        padding: { x: 20, y: 8 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      ui.add(arsenalBtn);
+
+      arsenalBtn.on('pointerdown', () => {
+        this.scene.start('menu');
+      });
+    }
   }
 }

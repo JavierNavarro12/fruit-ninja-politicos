@@ -5,6 +5,8 @@ import { TitleText } from '../game/ui/TitleText';
 import { GameModeCircles } from '../game/ui/GameModeCircles';
 import { SideMenu } from '../game/ui/SideMenu';
 import { SettingsButton } from '../game/ui/SettingsButton';
+import { progressManager } from '../game/managers/ProgressManager';
+import { ArsenalPanel } from '../game/ui/ArsenalPanel';
 
 export class MenuScene extends Phaser.Scene {
   // Módulos
@@ -29,7 +31,7 @@ export class MenuScene extends Phaser.Scene {
     this.topUI = new TopUI(this);
     this.titleText = new TitleText(this);
     this.gameModeCircles = new GameModeCircles(this);
-    this.sideMenu = new SideMenu(this);
+    this.sideMenu = new SideMenu(this, () => this.openArsenal());
     this.settingsButton = new SettingsButton(this);
   }
 
@@ -56,5 +58,10 @@ export class MenuScene extends Phaser.Scene {
   private onModeSelected(mode: string): void {
     // Iniciar el juego
     this.scene.start('game');
+  }
+
+  private openArsenal(): void {
+    const panel = new ArsenalPanel(this);
+    panel.show();
   }
 }

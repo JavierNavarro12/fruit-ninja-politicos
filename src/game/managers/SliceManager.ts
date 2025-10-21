@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { progressManager } from './ProgressManager';
 
 type SwipePoint = { x: number; y: number; t: number };
 
@@ -7,18 +8,48 @@ export class SliceManager {
   private trail: Phaser.GameObjects.Graphics;
   private swipePoints: SwipePoint[] = [];
   private slashMarks: Phaser.GameObjects.Graphics[] = [];
+  private isSlicing: boolean = false;
+  private boundPointerDown?: (p: Phaser.Input.Pointer) => void;
+  private boundPointerUp?: (p: Phaser.Input.Pointer) => void;
+  private boundPointerOut?: (p: Phaser.Input.Pointer) => void;
+  private boundPointerMove?: (p: Phaser.Input.Pointer) => void;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.trail = scene.add.graphics({ lineStyle: { width: 8, color: 0xFFFFFF, alpha: 0.9 } });
+    // Configurar color/estilo del rastro según efecto seleccionado
+    const style = this.getTrailStyle();
+    this.trail = scene.add.graphics({ lineStyle: style });
     this.trail.setDepth(15);
+    this.trail.setBlendMode(Phaser.BlendModes.ADD);
   }
 
   setup(): void {
-    this.scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!p.isDown) return;
+    this.boundPointerDown = () => { this.isSlicing = true; };
+    this.boundPointerUp = () => { this.isSlicing = false; this.clearSwipe(); };
+    this.boundPointerOut = () => { this.isSlicing = false; this.clearSwipe(); };
+    this.boundPointerMove = (p: Phaser.Input.Pointer) => {
+      if (!this.isSlicing) return;
       this.swipePoints.push({ x: p.x, y: p.y, t: performance.now() });
-    });
+    };
+
+    this.scene.input.on('pointerdown', this.boundPointerDown);
+    this.scene.input.on('pointerup', this.boundPointerUp);
+    this.scene.input.on('pointerout', this.boundPointerOut);
+    this.scene.input.on('pointermove', this.boundPointerMove);
+
+    // Asegurar limpieza al cerrar la escena
+    this.scene.events.on(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
+  }
+
+  teardown(): void {
+    if (this.boundPointerDown) this.scene.input.off('pointerdown', this.boundPointerDown);
+    if (this.boundPointerUp) this.scene.input.off('pointerup', this.boundPointerUp);
+    if (this.boundPointerOut) this.scene.input.off('pointerout', this.boundPointerOut);
+    if (this.boundPointerMove) this.scene.input.off('pointermove', this.boundPointerMove);
+    this.trail.destroy();
+    this.slashMarks.forEach(g => g.destroy());
+    this.clearSwipe();
+    this.isSlicing = false;
   }
 
   update(): void {
@@ -26,6 +57,9 @@ export class SliceManager {
     this.swipePoints = this.swipePoints.filter(p => now - p.t < 120);
 
     this.trail.clear();
+    // Reaplicar estilo por si el jugador cambió de efecto entre escenas
+    const style = this.getTrailStyle();
+    this.trail.lineStyle(style.width, style.color, style.alpha);
     if (this.swipePoints.length > 1) {
       this.trail.beginPath();
       this.trail.moveTo(this.swipePoints[0].x, this.swipePoints[0].y);
@@ -87,18 +121,45 @@ export class SliceManager {
       ease: 'Linear'
     });
 
-    // Partículas
+    // Partículas según efecto seleccionado
+    const { tint, blend } = this.getParticleStyle();
     const particles = this.scene.add.particles(x, y, undefined as any, {
       lifespan: 600,
       speed: { min: 200, max: 500 },
       angle: { min: 0, max: 360 },
       scale: { start: 1, end: 0 },
-      tint: [0xFF6B6B, 0xFF8E53, 0xFFD93D],
+      tint,
       quantity: 20,
-      blendMode: 'ADD'
+      blendMode: blend
     });
     particles.setDepth(14);
     this.scene.time.delayedCall(650, () => particles.destroy());
+  }
+
+  private getTrailStyle(): { width: number; color: number; alpha: number } {
+    switch (progressManager.selectedSliceEffect) {
+      case 'water':
+        return { width: 8, color: 0x4FC3F7, alpha: 0.95 };
+      case 'fire':
+        return { width: 8, color: 0xFF7043, alpha: 0.95 };
+      case 'lightning':
+        return { width: 8, color: 0xFFFF66, alpha: 0.95 };
+      default:
+        return { width: 8, color: 0xFFFFFF, alpha: 0.9 };
+    }
+  }
+
+  private getParticleStyle(): { tint: number[]; blend: Phaser.BlendModes | string } {
+    switch (progressManager.selectedSliceEffect) {
+      case 'water':
+        return { tint: [0x81D4FA, 0x29B6F6, 0xE1F5FE], blend: 'ADD' };
+      case 'fire':
+        return { tint: [0xFF6B6B, 0xFFA726, 0xFFD54F], blend: 'ADD' };
+      case 'lightning':
+        return { tint: [0xE6EE9C, 0xFFFF00, 0xB2FF59], blend: 'ADD' };
+      default:
+        return { tint: [0xFF6B6B, 0xFF8E53, 0xFFD93D], blend: 'ADD' };
+    }
   }
 
   private segmentIntersectsCircle(x1: number, y1: number, x2: number, y2: number, cx: number, cy: number, r: number): boolean {

@@ -10,7 +10,7 @@ export class TitleText {
   create(): void {
     const { width, height } = this.scene.scale;
 
-    const title = this.scene.add.text(width / 2, height * 0.12, 'FRUIT NINJA', {
+    const title = this.scene.add.text(width / 2, height * 0.16, 'FRUIT NINJA', {
       fontFamily: 'Arial Black, sans-serif',
       fontSize: '72px',
       color: '#ffffff',
@@ -20,7 +20,7 @@ export class TitleText {
     title.setStroke('#FF6B35', 8);
     title.setShadow(4, 4, '#000000', 10, true, true);
 
-    const subtitle = this.scene.add.text(width / 2, height * 0.18, 'POLÍTICOS', {
+    const subtitle = this.scene.add.text(width / 2, height * 0.22, 'POLÍTICOS', {
       fontFamily: 'Arial Black, sans-serif',
       fontSize: '32px',
       color: '#FFD700',

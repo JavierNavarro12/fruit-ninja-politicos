@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { progressManager } from '../managers/ProgressManager';
 
 export class GameUI {
   private scene: Phaser.Scene;
@@ -17,6 +18,17 @@ export class GameUI {
     this.createScoreUI();
     this.createLivesUI(width);
     this.createPauseButton(onPauseClick);
+
+    // Indicador de XP simple en HUD (parte baja izq.)
+    const xpText = this.scene.add.text(20, this.scene.scale.height - 30, `XP: ${progressManager.experience}/${progressManager.xpToNextLevel()}`, {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '14px',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5).setDepth(20);
+
+    this.scene.events.on('update-xp-hud', () => {
+      xpText.setText(`XP: ${progressManager.experience}/${progressManager.xpToNextLevel()}`);
+    });
   }
 
   private createScoreUI(): void {
