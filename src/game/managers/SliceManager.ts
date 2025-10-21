@@ -9,6 +9,7 @@ export class SliceManager {
   private swipePoints: SwipePoint[] = [];
   private slashMarks: Phaser.GameObjects.Graphics[] = [];
   private isSlicing: boolean = false;
+  private lastDirection: Phaser.Math.Vector2 | null = null;
   private boundPointerDown?: (p: Phaser.Input.Pointer) => void;
   private boundPointerUp?: (p: Phaser.Input.Pointer) => void;
   private boundPointerOut?: (p: Phaser.Input.Pointer) => void;
@@ -29,7 +30,19 @@ export class SliceManager {
     this.boundPointerOut = () => { this.isSlicing = false; this.clearSwipe(); };
     this.boundPointerMove = (p: Phaser.Input.Pointer) => {
       if (!this.isSlicing) return;
-      this.swipePoints.push({ x: p.x, y: p.y, t: performance.now() });
+      const now = performance.now();
+      const point = { x: p.x, y: p.y, t: now };
+      // Update last direction using the previous point
+      const prev = this.swipePoints[this.swipePoints.length - 1];
+      if (prev) {
+        const dx = point.x - prev.x;
+        const dy = point.y - prev.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 0.0001) {
+          this.lastDirection = new Phaser.Math.Vector2(dx / len, dy / len);
+        }
+      }
+      this.swipePoints.push(point);
     };
 
     this.scene.input.on('pointerdown', this.boundPointerDown);
@@ -50,6 +63,7 @@ export class SliceManager {
     this.slashMarks.forEach(g => g.destroy());
     this.clearSwipe();
     this.isSlicing = false;
+    this.lastDirection = null;
   }
 
   update(): void {
@@ -184,6 +198,11 @@ export class SliceManager {
 
   clearSwipe(): void {
     this.swipePoints = [];
+    this.lastDirection = null;
+  }
+
+  getLastDirection(): Phaser.Math.Vector2 | null {
+    return this.lastDirection ? this.lastDirection.clone() : null;
   }
 }
 

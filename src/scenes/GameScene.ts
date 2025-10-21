@@ -105,23 +105,116 @@ export class GameScene extends Phaser.Scene {
       this.lives = 0;
       this.gameOver();
     } else {
-      // Fruta normal - comportamiento habitual
-      target.setVisible(false);
+      // Fruta normal - partir en dos mitades con fisica y desvanecimiento
+      const dir = this.sliceManager.getLastDirection() || new Phaser.Math.Vector2(1, 0);
 
-      // Efectos visuales
+      // Ocultar el original
+      target.setVisible(false);
+      target.data.set('slicable', false);
+
+      // Efecto de corte
       this.sliceManager.createSliceEffect(target.x, target.y);
 
-      // Incrementar score
+      // Crear dos mitades como semicírculos estilizados
+      const radius = 40;
+      const color = (target.fillColor !== undefined ? target.fillColor : 0x00ff00) as number;
+      const normal = new Phaser.Math.Vector2(-dir.y, dir.x); // perpendicular
+
+      const halfA = this.add.graphics();
+      const halfB = this.add.graphics();
+
+      halfA.fillStyle(color, 1);
+      halfB.fillStyle(color, 1);
+
+      // Dibujar semicírculos opuestos a lo largo de la normal
+      const segments = 32;
+      const angleStartA = Math.atan2(normal.y, normal.x) - Math.PI / 2;
+      const angleEndA = angleStartA + Math.PI;
+      const angleStartB = angleEndA;
+      const angleEndB = angleStartA + 2 * Math.PI;
+
+      halfA.beginPath();
+      halfA.moveTo(0, 0);
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const a = angleStartA + t * (angleEndA - angleStartA);
+        halfA.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
+      }
+      halfA.closePath();
+      halfA.fillPath();
+
+      halfB.beginPath();
+      halfB.moveTo(0, 0);
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const a = angleStartB + t * (angleEndB - angleStartB);
+        halfB.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
+      }
+      halfB.closePath();
+      halfB.fillPath();
+
+      halfA.x = target.x;
+      halfA.y = target.y;
+      halfB.x = target.x;
+      halfB.y = target.y;
+
+      // Añadir cuerpos de física simples
+      this.physics.add.existing(halfA as any);
+      this.physics.add.existing(halfB as any);
+
+      const bodyA = (halfA as any).body as Phaser.Physics.Arcade.Body;
+      const bodyB = (halfB as any).body as Phaser.Physics.Arcade.Body;
+
+      // Emular masa ligera y colision mínima
+      bodyA.setAllowGravity(true);
+      bodyB.setAllowGravity(true);
+      bodyA.setCircle(radius / 2);
+      bodyB.setCircle(radius / 2);
+      bodyA.setOffset(-radius / 2, -radius / 2);
+      bodyB.setOffset(-radius / 2, -radius / 2);
+
+      const impulse = 400;
+      const tangent = new Phaser.Math.Vector2(dir.x, dir.y).normalize();
+      const split = new Phaser.Math.Vector2(-dir.y, dir.x).normalize();
+
+      // Velocidad base heredada del objeto original si existe
+      const originalBody = target.body as Phaser.Physics.Arcade.Body | undefined;
+      const baseVX = originalBody ? originalBody.velocity.x : 0;
+      const baseVY = originalBody ? originalBody.velocity.y : 0;
+
+      bodyA.setVelocity(baseVX + tangent.x * impulse + split.x * 120, baseVY + tangent.y * impulse + split.y * 120);
+      bodyB.setVelocity(baseVX + tangent.x * impulse - split.x * 120, baseVY + tangent.y * impulse - split.y * 120);
+
+      // Rotaciones opuestas
+      bodyA.setAngularVelocity(300);
+      bodyB.setAngularVelocity(-300);
+
+      // Sombra de jugo (pequeña línea) en el borde de corte
+      const juice = this.add.graphics();
+      juice.lineStyle(4, 0xFFFFFF, 0.2);
+      const cutLen = radius * 1.4;
+      const cx1 = target.x - normal.x * (cutLen / 2);
+      const cy1 = target.y - normal.y * (cutLen / 2);
+      const cx2 = target.x + normal.x * (cutLen / 2);
+      const cy2 = target.y + normal.y * (cutLen / 2);
+      juice.lineBetween(cx1, cy1, cx2, cy2);
+      this.tweens.add({ targets: juice, alpha: 0, duration: 300, onComplete: () => juice.destroy() });
+
+      // Desvanecer y limpiar mitades (más lento para que se vean más tiempo)
+      this.tweens.add({ targets: [halfA, halfB], alpha: 0, duration: 2000, ease: 'Cubic.easeOut', onComplete: () => {
+        halfA.destroy();
+        halfB.destroy();
+      }});
+
+      // Puntaje y progreso
       this.score += 1;
       this.gameUI.updateScore(this.score);
-
-      // Otorgar experiencia por corte y actualizar barras
       progressManager.addExperience(10);
       this.events.emit('update-xp-bar');
       this.events.emit('update-xp-hud');
 
-      // Destruir
-      target.destroy();
+      // Destruir objeto original con sus visuales
+      this.bombManager.destroyWithVisuals(target);
     }
   }
 
